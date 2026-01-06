@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  # Force legacy Docker behavior globally (matches AWS behavior)
+  # Force legacy Docker behavior globally (Matches AWS)
   DOCKER_BUILDKIT: 0
 
 jobs:
@@ -29,25 +29,20 @@ jobs:
         run: |
           gcloud auth configure-docker ${{ secrets.GCP_REGION }}-docker.pkg.dev --quiet
 
-      # --- DEBUG & VARIABLE SETTING ---
       - name: Set Image Variables & Debug
         run: |
-          # 1. Clean the tag (7 chars) and remove any hidden newlines
+          # 1. Clean the tag and URI
           CLEAN_TAG=$(echo "${{ github.sha }}" | cut -c1-7 | tr -d '[:space:]')
-          
-          # 2. Construct the full URI using secrets directly
           RAW_URI="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/${{ secrets.IMAGE_NAME }}"
-          # Clean the URI to remove any hidden spaces/newlines from secrets
           CLEAN_URI=$(echo "$RAW_URI" | tr -d '[:space:]')
 
-          # 3. DEBUG PRINTS (Check these in the logs if it fails)
+          # 2. Debug Prints
           echo "------------------------------------------"
           echo "DEBUG: Calculated Tag is: [$CLEAN_TAG]"
           echo "DEBUG: Calculated URI is: [$CLEAN_URI]"
           echo "------------------------------------------"
 
-          # 4. Save to GITHUB_ENV using the stable Heredoc method
-          # This is the "Solution" for the 'Invalid format' error
+          # 3. Save to GITHUB_ENV
           echo "IMAGE_TAG<<EOF" >> $GITHUB_ENV
           echo "$CLEAN_TAG" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -58,9 +53,8 @@ jobs:
 
       - name: Build Docker image
         run: |
-          # Use --builder default to force the AWS-style legacy engine
-          # Use the environment variables we just set
-          docker build --builder default -f docker/Dockerfile -t ${{ env.IMAGE_URI }}:${{ env.IMAGE_TAG }} .
+          # REMOVED "--builder default" because DOCKER_BUILDKIT: 0 already handles it
+          docker build -f docker/Dockerfile -t ${{ env.IMAGE_URI }}:${{ env.IMAGE_TAG }} .
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@0.20.0
