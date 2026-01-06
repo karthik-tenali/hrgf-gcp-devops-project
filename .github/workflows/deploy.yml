@@ -6,7 +6,9 @@ on:
       - main
 
 env:
-  # Force legacy Docker behavior globally (Matches AWS)
+  # Define the image name here (NOT in secrets)
+  IMAGE_NAME: hrgf-app
+  # Force legacy Docker behavior
   DOCKER_BUILDKIT: 0
 
 jobs:
@@ -31,18 +33,20 @@ jobs:
 
       - name: Set Image Variables & Debug
         run: |
-          # 1. Clean the tag and URI
+          # 1. Clean the tag
           CLEAN_TAG=$(echo "${{ github.sha }}" | cut -c1-7 | tr -d '[:space:]')
-          RAW_URI="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/${{ secrets.IMAGE_NAME }}"
+          
+          # 2. Construct URI using the Env var for IMAGE_NAME (Fixed!)
+          RAW_URI="${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/${{ env.IMAGE_NAME }}"
           CLEAN_URI=$(echo "$RAW_URI" | tr -d '[:space:]')
 
-          # 2. Debug Prints
+          # 3. Debug Prints
           echo "------------------------------------------"
           echo "DEBUG: Calculated Tag is: [$CLEAN_TAG]"
           echo "DEBUG: Calculated URI is: [$CLEAN_URI]"
           echo "------------------------------------------"
 
-          # 3. Save to GITHUB_ENV
+          # 4. Save to GITHUB_ENV
           echo "IMAGE_TAG<<EOF" >> $GITHUB_ENV
           echo "$CLEAN_TAG" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -53,7 +57,7 @@ jobs:
 
       - name: Build Docker image
         run: |
-          # REMOVED "--builder default" because DOCKER_BUILDKIT: 0 already handles it
+          # Legacy builder is fine, the name just needs to be valid now
           docker build -f docker/Dockerfile -t ${{ env.IMAGE_URI }}:${{ env.IMAGE_TAG }} .
 
       - name: Scan image with Trivy
