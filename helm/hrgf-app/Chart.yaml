@@ -1,0 +1,7 @@
+apiVersion: v2
+name: hrgf-app
+description: HRGF DevOps Demo Application
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+

@@ -1,0 +1,19 @@
+replicaCount: 2
+
+image:
+  repository: us-central1-docker.pkg.dev/hrgf-gcp-devops-project/hrgf-app/hrgf-app
+  tag: v1
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+

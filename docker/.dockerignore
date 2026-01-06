@@ -1,0 +1,11 @@
+.git
+.gitignore
+README.md
+terraform/
+k8s/
+helm/
+.github/
+*.md
+.env
+.DS_Store
+
