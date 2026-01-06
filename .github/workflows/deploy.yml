@@ -13,10 +13,10 @@ env:
   ARTIFACT_REPO: ${{ secrets.ARTIFACT_REPO }}
   IMAGE_NAME: hrgf-app
 
-# ---------------------------------------------------------
-# JOB 1: Build and Push Image
-# ---------------------------------------------------------
 jobs:
+  # ---------------------------------------------------------
+  # JOB 1: Build and Push Image
+  # ---------------------------------------------------------
   build:
     name: Build and Push Image
     runs-on: ubuntu-latest
@@ -39,24 +39,26 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
 
-      - name: Set Variables
+      - name: Set variables
         id: vars
         run: |
           SHA_SHORT=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          IMAGE_URI=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_NAME}
-          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
-          echo "image_uri=${IMAGE_URI}" >> $GITHUB_OUTPUT
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_NAME}"
 
-      - name: Build Docker image (disable buildkit)
-        env:
-          DOCKER_BUILDKIT: 0
+          printf "sha_short=%s\n" "$SHA_SHORT" >> "$GITHUB_OUTPUT"
+          printf "image_uri=%s\n" "$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+          echo "LOCAL_TAG=$SHA_SHORT" >> $GITHUB_ENV
+          echo "LOCAL_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Build Docker image
         run: |
           docker build -f docker/Dockerfile \
-            -t ${{ steps.vars.outputs.image_uri }}:${{ steps.vars.outputs.sha_short }} .
+            -t ${LOCAL_URI}:${LOCAL_TAG} .
 
       - name: Push image
         run: |
-          docker push ${{ steps.vars.outputs.image_uri }}:${{ steps.vars.outputs.sha_short }}
+          docker push ${LOCAL_URI}:${LOCAL_TAG}
 
   # ---------------------------------------------------------
   # JOB 2: Security Scan
@@ -75,7 +77,7 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for Artifact Registry
+      - name: Configure Docker
         run: gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
 
       - name: Scan image with Trivy
@@ -106,7 +108,7 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Get GKE Credentials
+      - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} \
             --zone ${GKE_ZONE} \
