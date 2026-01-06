@@ -7,6 +7,42 @@ This project automates the deployment of a simple Nginx web application to GCP G
 **Tech Stack:** GCP GKE, Terraform, Docker, Kubernetes, Helm, GitHub Actions, Trivy, Artifact Registry
 
 ---
+## Project Structure
+
+```
+├── app/                    # Web application (index.html)
+│   └── index.html
+│
+├── docker/                 # Dockerfile and .dockerignore
+│   ├── Dockerfile
+│   └── .dockerignore
+│
+├── terraform/              # Infrastructure as Code
+│   ├── main.tf            # GKE cluster, VPC, Artifact Registry
+│   ├── variables.tf       # Input variables
+│   ├── outputs.tf         # Output values
+│   ├── providers.tf       # GCP provider
+│   └── terraform.tfvars   # Your project configuration (not in git)
+│
+├── helm/hrgf-app/         # Helm chart for deployment
+│   ├── Chart.yaml
+│   ├── values.yaml
+│   └── templates/
+│       ├── deployment.yaml      # Application deployment
+│       └── service.yaml         # LoadBalancer service
+│
+├── k8s/                   # Alternative K8s manifests
+│   ├── deployment.yaml
+│   └── service.yaml
+│
+├── .github/workflows/     # CI/CD pipeline
+│   └── deploy.yml
+│
+├── .gitignore             # Git ignore rules
+│
+└── README.md
+```
+---
 
 ## How to Run IaC Code
 
@@ -133,43 +169,6 @@ kubectl get svc hrgf-app -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 
 *(External IP will be available 2-3 minutes after deployment)*
 
----
-
-## Project Structure
-
-```
-├── app/                    # Web application (index.html)
-│   └── index.html
-│
-├── docker/                 # Dockerfile and .dockerignore
-│   ├── Dockerfile
-│   └── .dockerignore
-│
-├── terraform/              # Infrastructure as Code
-│   ├── main.tf            # GKE cluster, VPC, Artifact Registry
-│   ├── variables.tf       # Input variables
-│   ├── outputs.tf         # Output values
-│   ├── providers.tf       # GCP provider
-│   └── terraform.tfvars   # Your project configuration (not in git)
-│
-├── helm/hrgf-app/         # Helm chart for deployment
-│   ├── Chart.yaml
-│   ├── values.yaml
-│   └── templates/
-│       ├── deployment.yaml      # Application deployment
-│       └── service.yaml         # LoadBalancer service
-│
-├── k8s/                   # Alternative K8s manifests
-│   ├── deployment.yaml
-│   └── service.yaml
-│
-├── .github/workflows/     # CI/CD pipeline
-│   └── deploy.yml
-│
-├── .gitignore             # Git ignore rules
-│
-└── README.md
-```
 
 ---
 
