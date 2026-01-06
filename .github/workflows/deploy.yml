@@ -13,20 +13,21 @@ env:
   ARTIFACT_REPO: ${{ secrets.ARTIFACT_REPO }}
   IMAGE_NAME: hrgf-app
 
+# ---------------------------------------------------------
+# JOB 1: Build and Push Image
+# ---------------------------------------------------------
 jobs:
-  deploy:
+  build:
+    name: Build and Push Image
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.vars.outputs.sha_short }}
+      image_uri: ${{ steps.vars.outputs.image_uri }}
 
     steps:
-      # ---------------------------
-      # Checkout source code
-      # ---------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ---------------------------
-      # Authenticate to GCP
-      # ---------------------------
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -35,67 +36,89 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # ---------------------------
-      # Configure Docker for Artifact Registry
-      # ---------------------------
-      - name: Configure Docker
-        run: |
-          gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
 
-      # ---------------------------
-      # Build Docker Image (NO BUILDX)
-      # ---------------------------
-      - name: Build Docker image
+      - name: Set Variables
+        id: vars
         run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
+          SHA_SHORT=$(echo "${GITHUB_SHA}" | cut -c1-7)
           IMAGE_URI=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_NAME}
+          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+          echo "image_uri=${IMAGE_URI}" >> $GITHUB_OUTPUT
 
-          docker build -f docker/Dockerfile -t ${IMAGE_URI}:${IMAGE_TAG} .
+      - name: Build Docker image (disable buildkit)
+        env:
+          DOCKER_BUILDKIT: 0
+        run: |
+          docker build -f docker/Dockerfile \
+            -t ${{ steps.vars.outputs.image_uri }}:${{ steps.vars.outputs.sha_short }} .
 
-          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+      - name: Push image
+        run: |
+          docker push ${{ steps.vars.outputs.image_uri }}:${{ steps.vars.outputs.sha_short }}
 
-      # ---------------------------
-      # Trivy Image Scan
-      # ---------------------------
+  # ---------------------------------------------------------
+  # JOB 2: Security Scan
+  # ---------------------------------------------------------
+  security_scan:
+    name: Trivy Security Scan
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
+
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@0.20.0
         with:
-          image-ref: ${{ env.IMAGE_URI }}:${{ env.IMAGE_TAG }}
+          image-ref: ${{ needs.build.outputs.image_uri }}:${{ needs.build.outputs.image_tag }}
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           format: 'table'
 
-      # ---------------------------
-      # Push Image to Artifact Registry
-      # ---------------------------
-      - name: Push image
-        run: |
-          docker push ${IMAGE_URI}:${IMAGE_TAG}
+  # ---------------------------------------------------------
+  # JOB 3: Deploy to GKE
+  # ---------------------------------------------------------
+  deploy:
+    name: Deploy to GKE
+    needs: [build, security_scan]
+    runs-on: ubuntu-latest
 
-      # ---------------------------
-      # Install Helm
-      # ---------------------------
-      - name: Install Helm
-        uses: azure/setup-helm@v4
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # ---------------------------
-      # Get GKE Credentials
-      # ---------------------------
-      - name: Update kubeconfig
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Get GKE Credentials
         run: |
-          gcloud container clusters get-credentials \
-            ${GKE_CLUSTER_NAME} \
+          gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} \
             --zone ${GKE_ZONE} \
             --project ${GCP_PROJECT_ID}
 
-      # ---------------------------
-      # Deploy to GKE using Helm
-      # ---------------------------
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
       - name: Deploy with Helm
         run: |
           helm upgrade --install hrgf-app helm/hrgf-app \
-            --set image.repository=${IMAGE_URI} \
-            --set image.tag=${IMAGE_TAG} \
+            --set image.repository=${{ needs.build.outputs.image_uri }} \
+            --set image.tag=${{ needs.build.outputs.image_tag }} \
             --wait \
             --timeout 5m
