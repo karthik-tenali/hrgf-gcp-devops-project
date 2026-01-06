@@ -12,21 +12,16 @@ env:
   GKE_ZONE: ${{ secrets.GKE_ZONE }}
   ARTIFACT_REPO: ${{ secrets.ARTIFACT_REPO }}
   IMAGE_NAME: hrgf-app
+  DOCKER_BUILDKIT: 0
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # ---------------------------
-      # Checkout
-      # ---------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ---------------------------
-      # Authenticate to GCP
-      # ---------------------------
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
@@ -35,29 +30,21 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # ---------------------------
-      # Docker Auth (Artifact Registry)
-      # ---------------------------
       - name: Configure Docker
         run: |
           gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
 
-      # ---------------------------
-      # Build Docker Image
-      # ---------------------------
+      # This step fixes the "Invalid Format" and "Missing Argument" errors
+      - name: Set Image Variables
+        run: |
+          echo "IMAGE_TAG=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_ENV
+          echo "IMAGE_URI=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_NAME}" >> $GITHUB_ENV
+
       - name: Build Docker image
         run: |
-          IMAGE_TAG=${GITHUB_SHA::7}
-          IMAGE_URI=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_NAME}
+          docker build -f docker/Dockerfile \
+            -t ${IMAGE_URI}:${IMAGE_TAG} .
 
-          docker build -f docker/Dockerfile -t ${IMAGE_URI}:${IMAGE_TAG} .
-
-          echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-
-      # ---------------------------
-      # Trivy Scan
-      # ---------------------------
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@0.20.0
         with:
@@ -66,31 +53,19 @@ jobs:
           exit-code: '1'
           format: 'table'
 
-      # ---------------------------
-      # Push Image
-      # ---------------------------
       - name: Push image
         run: |
           docker push ${IMAGE_URI}:${IMAGE_TAG}
 
-      # ---------------------------
-      # Get GKE Credentials
-      # ---------------------------
       - name: Get GKE credentials
         run: |
           gcloud container clusters get-credentials ${GKE_CLUSTER_NAME} \
             --zone ${GKE_ZONE} \
             --project ${GCP_PROJECT_ID}
 
-      # ---------------------------
-      # Install Helm
-      # ---------------------------
       - name: Install Helm
         uses: azure/setup-helm@v4
 
-      # ---------------------------
-      # Deploy with Helm
-      # ---------------------------
       - name: Deploy with Helm
         run: |
           helm upgrade --install hrgf-app helm/hrgf-app \
