@@ -18,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ---------------------------
+      # Checkout
+      # ---------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -33,11 +36,17 @@ jobs:
         uses: google-github-actions/setup-gcloud@v2
 
       # ---------------------------
+      # Docker Buildx (FIX)
+      # ---------------------------
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---------------------------
       # Docker Auth (Artifact Registry)
       # ---------------------------
-      - name: Configure Docker
+      - name: Configure Docker for Artifact Registry
         run: |
-          gcloud auth configure-docker $GCP_REGION-docker.pkg.dev --quiet
+          gcloud auth configure-docker ${GCP_REGION}-docker.pkg.dev --quiet
 
       # ---------------------------
       # Build Docker Image
@@ -45,21 +54,28 @@ jobs:
       - name: Build Docker image
         run: |
           IMAGE_TAG=${GITHUB_SHA::7}
-          IMAGE_URI=$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$ARTIFACT_REPO/$IMAGE_NAME
+          IMAGE_URI=${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${ARTIFACT_REPO}/${IMAGE_NAME}
 
-          docker build -f docker/Dockerfile -t ${IMAGE_URI}:${IMAGE_TAG} .
+          docker buildx build \
+            --platform linux/amd64 \
+            -f docker/Dockerfile \
+            -t ${IMAGE_URI}:${IMAGE_TAG} \
+            --load \
+            .
+
           echo "IMAGE_URI=${IMAGE_URI}" >> $GITHUB_ENV
           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
 
       # ---------------------------
-      # (Optional) Image Scan
+      # Trivy Image Scan
       # ---------------------------
-      # - name: Scan image with Trivy
-      #   uses: aquasecurity/trivy-action@0.20.0
-      #   with:
-      #     image-ref: ${{ env.IMAGE_URI }}:${{ env.IMAGE_TAG }}
-      #     severity: 'CRITICAL,HIGH'
-      #     exit-code: '1'
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          image-ref: ${{ env.IMAGE_URI }}:${{ env.IMAGE_TAG }}
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          format: 'table'
 
       # ---------------------------
       # Push Image
@@ -73,8 +89,6 @@ jobs:
       # ---------------------------
       - name: Install Helm
         uses: azure/setup-helm@v4
-        with:
-          version: 'latest'
 
       # ---------------------------
       # Get GKE Credentials
@@ -82,9 +96,9 @@ jobs:
       - name: Update kubeconfig
         run: |
           gcloud container clusters get-credentials \
-            $GKE_CLUSTER_NAME \
-            --zone $GKE_ZONE \
-            --project $GCP_PROJECT_ID
+            ${GKE_CLUSTER_NAME} \
+            --zone ${GKE_ZONE} \
+            --project ${GCP_PROJECT_ID}
 
       # ---------------------------
       # Deploy with Helm
@@ -96,4 +110,3 @@ jobs:
             --set image.tag=${IMAGE_TAG} \
             --wait \
             --timeout 5m
-

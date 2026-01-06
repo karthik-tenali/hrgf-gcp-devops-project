@@ -1,6 +1,6 @@
 # HRGF GCP DevOps Project - Automated Kubernetes Deployment
 
-## Overview (remove this for next commit)
+## Overview
 
 This project automates the deployment of a simple Nginx web application to GCP GKE using Infrastructure as Code (Terraform), containerization (Docker), and CI/CD (GitHub Actions). The solution includes Helm for Kubernetes deployment management and Trivy for container security scanning.
 
